@@ -1,0 +1,99 @@
+---
+- name: Install Wordpress
+  hosts: server
+  remote_user: root
+
+  tasks:
+   - name: Install Tools Package
+     yum:
+       name: "{{ item }}"
+       state: present
+     loop:
+       - httpd
+       - mariadb
+       - mariadb-server
+       - php
+       - php-common
+       - php-mysql
+       - php-gd
+       - php-xml
+       - php-mbstring
+       - php-mcrypt
+       - php-xmlrpc
+       - unzip
+       - wget
+       - MySQL-python
+   - name: Start Service
+     service:
+       name: "{{ item }}"
+       state: started
+       enabled: yes
+     loop: [ 'httpd', 'mariadb' ]
+   - name: Enable Firewall
+     firewalld:
+       service: http
+       permanent: yes
+       state: enabled 
+       immediate: yes
+   - name: execute mysqladmin root
+     block:
+       - shell: mysqladmin password "abc"
+     rescue:
+      - debug:
+         msg: 'May be dulpicate or we ever run this command'
+   - name: Copy Script
+     copy:
+       remote_src: no
+       src: /home/centos/wordpress-playbook/sql_script.sql
+       dest: /tmp/sql_script.sql
+   - name: Add Database test for prevent SQL Not exist Exception 
+     mysql_db:
+       login_user: root
+       login_password: abc
+       name: test
+       state: present   
+   - name: Create Sql1
+     block:
+       - mysql_db:
+          login_user: root
+          login_password: abc
+          state: import
+          name: all
+          target: /tmp/sql_script.sql
+     rescue:
+       - debug:
+          msg: 'Maybe dulpicate SQL command or we ever run that sql command' 
+   - name: Download Wordpress Software
+     get_url:
+       url: https://wordpress.org/wordpress-5.0.tar.gz
+       dest: /tmp/wordpress-5.0.tar.gz
+   - name: Exacted zip
+     unarchive:
+       src: /tmp/wordpress-5.0.tar.gz
+       dest: /var/www/html/
+       remote_src: yes
+   - name: Owner 755
+     file:
+       path: /var/www/html/wordpress
+       owner: apache
+       group: apache
+       mode: 0755
+   - name: Create Dir 
+     file: 
+       path: /var/www/html/wordpress/wp-content/uploads
+       state: directory
+       group: apache 
+   - name: Move File
+     copy:
+       remote_src: yes
+       src: /var/www/html/wordpress/wp-config-sample.php
+       dest: /var/www/html/wordpress/wp-config.php
+   - name: Replace config
+     replace:
+       path: /var/www/html/wordpress/wp-config.php
+       regexp: "{{ item.name }}"
+       replace: "{{ item.replace }}"
+     loop:
+       - { name: database_name_here, replace: wordpress }
+       - { name: username_here, replace: ansible }
+       - { name: password_here, replace: mypassword }    
